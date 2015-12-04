@@ -1,18 +1,19 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module ACI.Image where
 
-import qualified Codec.Archive.Tar    as Tar
-import           Control.Applicative
-import           Data.Attoparsec.Text
-import           Data.Char
-import qualified Data.SemVer          as SemVer
-import qualified Data.Text            as T
-import           Prelude              hiding (takeWhile)
+import qualified Codec.Archive.Tar as Tar
+import Control.Applicative
+import Data.Attoparsec.Text
+import Data.Char
+import qualified Data.SemVer as SemVer
+import qualified Data.Map as M
+import qualified Data.Text as T
+import Prelude hiding (takeWhile)
 
 --------------------------------------------------------------------------------
 -- ACI Image
@@ -26,16 +27,45 @@ createImage = Tar.create
 --------------------------------------------------------------------------------
 -- Manifest
 --------------------------------------------------------------------------------
-newtype ACKind =
-    ACKind T.Text
-    deriving (Eq,Show)
+data ImageManifest = ImageManifest
+    { acKind :: ACKind
+    , acVersion :: SemVer.Version
+    , name :: ACIdentifier
+    , labels :: M.Map ACIdentifier T.Text
+    , app :: Maybe ACApp
+    , dependencies :: ACDependencies
+    , annotations :: ACAnnotations
+    }
+
+data ACApp = ACApp
+    { appExec :: Maybe [T.Text]
+      -- ^ Executable with flags to launch.
+    , appUser :: T.Text
+      -- ^ UID of user the app is to be run as.
+    , appGroup :: T.Text
+      -- ^ GID of group the app is to be run as.
+    , appSupplementaryGIDs :: Maybe [Integer]
+      -- ^ Additional GID's under whihch the apps processes should run.
+    , appEventHandlers :: Maybe [EventHandler]
+      -- ^ Hooks based on lifecycle events.
+      
+    }
+
+data ACDependencies = ACDependencies
+
+data ACAnnotations = ACAnnotations
+
+data EventHandler = EventHandler
+     { ehExec :: [T.Text]
+     , ehName :: EventHandlerName
+     }
+
+data EventHandlerName = PreStart | PostStop
+
+newtype ACKind = ACKind T.Text deriving (Eq,Show)
 
 -- | AC identifier type.
-newtype ACIdentifier =
-    ACIdentifier T.Text
-    deriving (Eq,Show)
-
-
+newtype ACIdentifier = ACIdentifier T.Text deriving (Eq,Show)
 
 -- | The kinds currently allowed.
 acKinds
@@ -47,14 +77,16 @@ acKindParser
     :: Parser ACKind
 acKindParser = ACKind <$> choice (fmap string acKinds)
 
-acVersionParser :: Parser SemVer.Version
+-- | Parse an AC version, must follow the SemVer spec.
+acVersionParser
+    :: Parser SemVer.Version
 acVersionParser = SemVer.parser
 
 -- Parse an AC Identifier type, see
 -- <https://github.com/appc/spec/blob/master/spec/types.md#ac-identifier-type>
-acidParser
+acIdParser
     :: Parser ACIdentifier
-acidParser = toAcid <$> initAllowed <*> tailAllowed
+acIdParser = toAcid <$> initAllowed <*> tailAllowed
   where
     initAllowed = choice [letter, digit]
     tailAllowed = do

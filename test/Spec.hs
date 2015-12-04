@@ -1,14 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import           ACI.Image
-import           Data.Attoparsec.Text
-import           Data.Maybe
-import           Data.Monoid
-import qualified Data.SemVer           as SemVer
-import qualified Data.Text             as T
-import           Test.Tasty
-import           Test.Tasty.HUnit
-import           Test.Tasty.QuickCheck
+import ACI.Image
+import Data.Attoparsec.Text
+import Data.Maybe
+import qualified Data.Text as T
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 main :: IO ()
 main =
@@ -47,10 +45,7 @@ testAcKindSpec =
 
 ----------------------------------------------------------------------------
 -- AC identifier tests
-data AllowedACId =
-    AllowedACId T.Text
-                ACIdentifier
-    deriving (Eq,Show)
+data AllowedACId = AllowedACId T.Text ACIdentifier deriving (Eq,Show)
 
 instance Arbitrary AllowedACId where
     arbitrary =
@@ -76,4 +71,4 @@ genAcId = do
 -- <https://github.com/appc/spec/blob/master/spec/types.md#ac-identifier-type>
 prop_ac_id_spec
     :: AllowedACId -> Bool
-prop_ac_id_spec (AllowedACId txt acid) = run acidParser txt == Just acid
+prop_ac_id_spec (AllowedACId txt acid) = run acIdParser txt == Just acid

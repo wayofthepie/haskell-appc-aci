@@ -23,6 +23,7 @@ library
     base >= 4.7 && < 5
     , aeson
     , attoparsec
+    , containers
     , bytestring
     , semver
     , text
