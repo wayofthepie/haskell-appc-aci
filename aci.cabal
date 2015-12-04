@@ -24,6 +24,7 @@ library
     , aeson
     , attoparsec
     , bytestring
+    , semver
     , text
     , uri-bytestring
     , tar
@@ -45,6 +46,7 @@ test-suite aci-test
     base
     , attoparsec
     , bytestring
+    , semver
     , tasty
     , tasty-hunit
     , tasty-quickcheck

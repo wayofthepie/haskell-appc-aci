@@ -10,13 +10,9 @@ import qualified Codec.Archive.Tar    as Tar
 import           Control.Applicative
 import           Data.Attoparsec.Text
 import           Data.Char
-import           Data.Monoid
-import           Data.Proxy
+import qualified Data.SemVer          as SemVer
 import qualified Data.Text            as T
-import           Debug.Trace
-import           GHC.TypeLits
 import           Prelude              hiding (takeWhile)
-import           System.IO
 
 --------------------------------------------------------------------------------
 -- ACI Image
@@ -34,6 +30,13 @@ newtype ACKind =
     ACKind T.Text
     deriving (Eq,Show)
 
+-- | AC identifier type.
+newtype ACIdentifier =
+    ACIdentifier T.Text
+    deriving (Eq,Show)
+
+
+
 -- | The kinds currently allowed.
 acKinds
     :: [T.Text]
@@ -44,10 +47,8 @@ acKindParser
     :: Parser ACKind
 acKindParser = ACKind <$> choice (fmap string acKinds)
 
--- | AC identifier type.
-newtype ACIdentifier =
-    ACIdentifier T.Text
-    deriving (Eq,Show)
+acVersionParser :: Parser SemVer.Version
+acVersionParser = SemVer.parser
 
 -- Parse an AC Identifier type, see
 -- <https://github.com/appc/spec/blob/master/spec/types.md#ac-identifier-type>

@@ -4,13 +4,10 @@ import           ACI.Image
 import           Data.Attoparsec.Text
 import           Data.Maybe
 import           Data.Monoid
-import           Data.Proxy
-import qualified Data.Text                    as T
-import           Debug.Trace
+import qualified Data.SemVer           as SemVer
+import qualified Data.Text             as T
 import           Test.Tasty
 import           Test.Tasty.HUnit
-import           Test.Tasty.Ingredients.Basic
-import           Test.Tasty.Options
 import           Test.Tasty.QuickCheck
 
 main :: IO ()
@@ -35,7 +32,9 @@ manifestTestGroup =
     testGroup
         "manifest parser tests"
         [ testProperty "Valid App Container identifier spec" prop_ac_id_spec
-        , testCase "Valid App Container kind spec" test_ac_kind_spec]
+        , testCase "Valid App Container kind spec" testAcKindSpec
+        , testProperty "Valid App Container version spec" prop_ac_version_spec
+        ]
 
 -----------------------------------------------------------------------------
 -- AC kind tests
@@ -43,11 +42,59 @@ acKindStrings
     :: [T.Text]
 acKindStrings = ["ImageManifest", "PodManifest"]
 
-test_ac_kind_spec :: IO ()
-test_ac_kind_spec =
+testAcKindSpec :: IO ()
+testAcKindSpec =
     assert (isJust $ foldl1 (>>) $ fmap (run acKindParser) acKindStrings)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+-- AC version tests
+-- The parser for the AC version is just the parser from the semver package so
+-- it's probably overkill to test it, but just in case this changes/breaks lets
+-- test it.
+data AllowedVersion =
+    AllowedVersion T.Text
+                   SemVer.Version
+    deriving (Eq,Show)
+
+instance Arbitrary AllowedVersion where
+    arbitrary =
+        genSemVer >>=
+        \sver ->
+             return $ AllowedVersion (SemVer.toText sver) sver
+
+-- Generate valid semver's.
+genSemVer :: Gen SemVer.Version
+genSemVer = do
+    let c2txt = T.pack . flip (:) []
+    major <- elements [0 .. 9]
+    minor <- elements [0 .. 9]
+    patch <- elements [0 .. 9]
+    maybePreRel <- mconcat . fmap c2txt <$> listOf allowedSymbols
+    maybeBuildMeta <- mconcat . fmap c2txt <$> listOf allowedSymbols
+    return $ consSemVer major minor patch maybePreRel maybeBuildMeta
+  where
+    -- Symbols allowed in pre-release versions and build metadata. May only be
+    -- ascii alphanumerics and a hyphen.
+    allowedSymbols =
+        elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['-']
+    consSemVer ma mi patch preRel buildMeta =
+        SemVer.version
+            ma
+            mi
+            patch
+            (maybeToList $ toId preRel)
+            (maybeToList $ toId buildMeta)
+      where
+        toId txt
+          | T.null txt = Nothing
+          | otherwise = SemVer.textual txt
+
+-- | Verifies the AC Version parser follows the SemVer specification.
+prop_ac_version_spec :: AllowedVersion -> Bool
+prop_ac_version_spec (AllowedVersion txt sver) =
+    run acVersionParser txt == Just sver
+
+----------------------------------------------------------------------------
 -- AC identifier tests
 data AllowedACId =
     AllowedACId T.Text
@@ -58,7 +105,7 @@ instance Arbitrary AllowedACId where
     arbitrary =
         genAcId >>=
         \txt ->
-             pure $ AllowedACId txt (ACIdentifier txt)
+             return $ AllowedACId txt (ACIdentifier txt)
 
 genAcIdInitChar :: Gen (Char, Char)
 genAcIdInitChar = do
