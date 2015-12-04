@@ -39,8 +39,6 @@ manifestTestGroup = testGroup "manifest parser tests"
 
 -------------------------------------------------------------------------------
 -- | AC kind tests
-data AllowedACKind = AllowedACKind T.Text ACKind deriving (Eq,Show)
-
 acKindStrings :: [T.Text]
 acKindStrings = ["ImageManifest", "PodManifest"]
 
