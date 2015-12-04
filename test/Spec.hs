@@ -1,17 +1,25 @@
-{-# LANGUAGE
-    OverloadedStrings
-    #-}
-import Data.Attoparsec.Text
-import qualified Data.Text as T
-import Test.Tasty
-import Test.Tasty.QuickCheck
+{-# LANGUAGE OverloadedStrings #-}
+import           Data.Attoparsec.Text
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Proxy
+import qualified Data.Text                    as T
+import           Test.Tasty
+import           Test.Tasty.HUnit
+import           Test.Tasty.Ingredients.Basic
+import           Test.Tasty.Options
+import           Test.Tasty.QuickCheck
 
-import ACI.Image
+import           ACI.Image
+
+import           Debug.Trace
 
 main :: IO ()
-main = defaultMain $ testGroup "ACI Image Property Tests"
-    [ manifestTestGroup
-    ]
+main = defaultMain . localOption (QuickCheckVerbose True) $
+    testGroup "ACI Image Property Tests"
+        [ manifestTestGroup
+        ]
+
 
 -- | Run a parser.
 run :: Parser a -> T.Text -> Maybe a
@@ -24,9 +32,23 @@ run p input = case parseOnly p input of
 -------------------------------------------------------------------------------
 manifestTestGroup :: TestTree
 manifestTestGroup = testGroup "manifest parser tests"
-   [ testProperty "valid acid spec" prop_ac_id_spec ]
+   [ testProperty "Valid App Container identifier spec" prop_ac_id_spec
+   , testCase "Valid App Container kind spec" test_ac_kind_spec
+   ]
 
 
+-------------------------------------------------------------------------------
+-- | AC kind tests
+data AllowedACKind = AllowedACKind T.Text ACKind deriving (Eq,Show)
+
+acKindStrings :: [T.Text]
+acKindStrings = ["ImageManifest", "PodManifest"]
+
+test_ac_kind_spec :: IO ()
+test_ac_kind_spec = assert (isJust $ foldl1 (>>) $ fmap ( run acKindParser ) acKindStrings)
+
+-------------------------------------------------------------------------------
+-- | AC identifier tests
 data AllowedACId = AllowedACId T.Text ACIdentifier deriving (Eq, Show)
 
 instance Arbitrary AllowedACId where
@@ -37,7 +59,7 @@ genAcIdInitChar = elements $ ['a'..'z'] ++ ['0'..'9']
 
 genAcId :: Gen T.Text
 genAcId = T.pack <$> ( genAcIdInitChar >>=
-    \c -> ((++) [c]) <$> elements ["-a-z0-9._/~"] )
+    \c -> (++) [c] <$> listOf1 (elements "-a-z0-9._/~"))
 
 -- | Verifies the AC identifier parser follows the AC identifier
 -- specifications outlined here

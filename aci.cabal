@@ -46,6 +46,7 @@ test-suite aci-test
     , attoparsec
     , bytestring
     , tasty
+    , tasty-hunit
     , tasty-quickcheck
     , text
     , aci
