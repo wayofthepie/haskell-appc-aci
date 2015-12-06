@@ -25,6 +25,7 @@ library
     , attoparsec
     , containers
     , bytestring
+    , filepath
     , semver
     , text
     , uri-bytestring
