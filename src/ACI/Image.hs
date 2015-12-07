@@ -22,152 +22,173 @@ import           System.FilePath
 createImage :: FilePath -> FilePath -> [FilePath] -> IO ()
 createImage = Tar.create
 
+--------------------------------------------------------------------------------
+-- Manifest
+--------------------------------------------------------------------------------
 -- | Definition for an image manifest.
 data ImageManifest =
        ImageManifest
-         {
-         -- | Must be an ACKind of value __ImageManifest__.
-         acKind :: ACKind
-         -- | The version of the schema specification.
-         , acVersion :: SemVer.Version
-         -- | Human readable name for this App Container image.
-         , name :: ACIdentifier
-         -- | Labels used during lookup in image discovery.
-         , labels :: M.Map ACIdentifier T.Text
-         -- | Default parameters that can be used to execute this image as an application.
-         , app :: Maybe ACApp
-         -- | Dependent application images that need to be placed down into the rootfs before the files from
-         -- this image
-         , dependencies :: Maybe [ACDependency]
-         -- | Whitelist of absolute paths that will exist in the app's rootfs after rendering.
-         , pathWhiteList :: Maybe [FilePath]
-         -- | Any extra metadata you wish to add to the image.
-         , annotations :: Maybe [ACAnnotation]
+         { acKind :: ACKind                            -- ^ Must be an ACKind of value __ImageManifest__.
+         , acVersion :: SemVer.Version                 -- ^ The version of the schema specification.
+         , name :: ACIdentifier                        -- ^ Human readable name for this App Container image.
+         , labels :: Maybe (M.Map ACIdentifier T.Text) -- ^ Labels used during lookup in image discovery.
+         , app :: Maybe ACApp                          -- ^ Default parameters.
+         , dependencies :: Maybe [ACDependency]        -- ^ Dependent app images.
+         , pathWhiteList :: Maybe [FilePath]           -- ^ Whitelist of absolute paths.
+         , annotations :: Maybe [ACAnnotation]         -- ^ Any extra metadata you wish to add to the image.
          }
   deriving (Eq, Show)
 
--- | Defines the default parameters that can be used to execute this image as an application.
-data ACApp =
-       ACApp
-         {
-         -- | Executable with flags to launch.
-         appExec :: Maybe [T.Text]
-         -- | UID of user the app is to be run as.
-         , appUser :: T.Text
-         -- | GID of group the app is to be run as.
-         , appGroup :: T.Text
-         -- | Additional GID's under whihch the apps processes should run.
-         , appSupplementaryGIDs :: Maybe [Integer]
-         -- | Hooks based on lifecycle events.
-         , appEventHandlers :: Maybe [EventHandler]
-         -- | Workig directory of launched application.
-         , appWorkDir :: Maybe FilePath
-         -- | The applications environment variables.
-         , appEnvironment :: Maybe (M.Map T.Text T.Text)
-         -- | List of isolation steps that SHOULD be applied to the app.
-         , appIsolators :: Maybe [Isolator]
-         -- | Locations where this app expects external data to be mounted.
-         , appMntPoints :: Maybe [MountPoint]
-         -- | Ports where this app will be listening on.
-         , appPorts :: Maybe [Port]
-         }
-  deriving (Eq, Show)
-
-data EventHandler =
-       EventHandler
-         {
-         -- | Command to run.
-         ehExec :: [T.Text]
-         -- | When command is to be executed, pre-start/post-stop.
-         , ehName :: EventHandlerName
-         }
-  deriving (Eq, Show)
-
-data EventHandlerName = PreStart
-                      | PostStop
-  deriving (Eq, Show)
-
-data Isolator =
-       Isolator
-         {
-         -- | Name of the isolator to apply.
-         isoName :: ACIdentifier
-         -- | Value to apply.
-         , isoValue :: Value
-         }
-  deriving (Eq, Show)
-
-data MountPoint =
-       MountPoint
-         {
-         -- | Mount point name.
-         mpName :: T.Text
-         -- | Path inside the rootfs.
-         , mpPath :: FilePath
-         -- | Whether th mountpoint is read-only.
-         , mpReadOnly :: Bool
-         }
-  deriving (Eq, Show)
-
-data ACDependency =
-       ACDependency
-         {
-         -- | Name of the dependent App Container image.
-         depImageName :: ACIdentifier
-         -- | Content hash of the dependency.
-         , depImageID :: Maybe T.Text
-         -- | List of labels for the dependency.
-         , depLabels :: Maybe (M.Map ACIdentifier T.Text)
-         -- | The size of the dependency in bytes.
-         , depSize :: Maybe Integer
-         }
-  deriving (Eq, Show)
-
-data Port =
-       Port
-         {
-         -- | Descriptive name for this port.
-         portName :: T.Text
-         -- | Protocol that will be used on this port.
-         , portProto :: T.Text
-         -- | Port number that will be used.
-         , portNum :: T.Text
-         -- | A range of ports starting with portNum and ending with portNum + count -1.
-         , portCount :: Maybe Int
-         -- | If true the application expectes to be socket activated on these ^ ports. NOTE : MUST default
-         -- to False if unsupplied.
-         , portSocketActivated :: Bool
-         }
-  deriving (Eq, Show)
-
-data ACAnnotation =
-       ACAnnotation
-         {
-         -- | Name of the annotation.
-         annoName :: T.Text
-         -- | Value of the annotation.
-         , annoValue :: T.Text
-         }
-  deriving (Eq, Show)
+instance FromJSON ImageManifest where
+    parseJSON (Object x) =
+        ImageManifest <$> (textToAcKind <$> x .: "acKind") <*>
+        ((SemVer.fromText <$> (x .: "acVersion")) >>=
+         \e ->
+              case e of
+                  Right v -> return v
+                  Left _ -> fail "Expected a version") <*>
+        x .: "name" <*>
+        x .:? "labels" <*>
+        x .:? "app" <*>
+        x .:? "dependencies" <*>
+        x .:? "pathWhiteList" <*>
+        x .:? "annotations"
+      where
+        failOnVerErr e =
+            case e of
+                Right v -> return v
+                Left _ -> "Version does follow semver spec"
+    parseJSON _ = fail "Expecting an ImageManifest"
 
 newtype ACKind = ACKind T.Text
   deriving (Eq, Show)
+
+textToAcKind :: T.Text -> ACKind
+textToAcKind kind =
+  case kind of
+    "ImageManifest" -> ACKind kind
+    "PodManifest"   -> ACKind kind
+
 
 -- | AC identifier type.
 newtype ACIdentifier = ACIdentifier T.Text
   deriving (Eq, Show)
 
+
+-- | Defines the default parameters that can be used to execute this image as an application.
+data ACApp =
+       ACApp
+         { appExec :: Maybe [T.Text]                     -- ^ Executable with flags to launch.
+         , appUser :: T.Text                             -- ^ UID of user the app is to be run as.
+         , appGroup :: T.Text                            -- ^ GID of group the app is to be run as.
+         , appSupplementaryGIDs :: Maybe [Integer]       -- ^ Additional GID's under whihch the apps processes should run.
+         , appEventHandlers :: Maybe [EventHandler]      -- ^ Hooks based on lifecycle events.
+         , appWorkDir :: Maybe FilePath                  -- ^ Workig directory of launched application.
+         , appEnvironment :: Maybe (M.Map T.Text T.Text) -- ^ The applications environment variables.
+         , appIsolators :: Maybe [Isolator]              -- ^ List of isolation steps that SHOULD be applied to the app.
+         , appMntPoints :: Maybe [MountPoint]            -- ^ Locations where this app expects external data to be mounted.
+         , appPorts :: Maybe [Port]                      -- ^ Ports where this app will be listening on.
+         }
+  deriving (Eq, Show)
+
+instance FromJSON ACApp where
+  parseJSON (Object x) = ACApp <$> x .:? "exec"
+                               <*> x .: "user"
+                               <*> x .: "group"
+                               <*> x .:? "supplementaryGids"
+                               <*> x .:? "eventHandlers"
+                               <*> x .:? "workingDirectory"
+                               <*> x .:? "environment"
+                               <*> x .:? "isolators"
+                               <*> x .:? "mountPoints"
+                               <*> x .:? "ports"
+
+data EventHandler =
+       EventHandler
+         { ehExec :: [T.Text]         -- ^ Command to run.
+         , ehName :: EventHandlerName -- ^ When command is to be executed.
+         }
+  deriving (Eq, Show)
+
+data EventHandlerName = PreStart
+                      | PostStop
+                      | Undefined T.Text
+  deriving (Eq, Show)
+
+
+textToEvhName :: T.Text -> EventHandlerName
+textToEvhName name =
+  case name of
+    "pre-start" -> PreStart
+    "post-stop" -> PostStop
+    _           -> Undefined name
+
+instance FromJSON EventHandler where
+  parseJSON (Object x) = EventHandler <$> x .: "exec" <*> (textToEvhName <$> x .: "name")
+  parseJSON _ = fail "Expected an EventHandler!"
+
+data Isolator =
+       Isolator
+         { isoName :: ACIdentifier -- ^ Name of the isolator to apply.
+         , isoValue :: Value       -- ^ Value to apply.
+         }
+  deriving (Eq, Show)
+
+instance FromJSON Isolator where
+  parseJSON (Object x) = Isolator <$> x .: "name" <*> x .: "value"
+
+data MountPoint =
+       MountPoint
+         { mpName :: T.Text   -- ^ Mount point name.
+         , mpPath :: FilePath -- ^ Path inside the rootfs.
+         , mpReadOnly :: Bool -- ^ Whether th mountpoint is read-only.
+         }
+  deriving (Eq, Show)
+
+data ACDependency =
+       ACDependency
+         { depImageName :: ACIdentifier                   -- ^ Name of the dependent App Container image.
+         , depImageID :: Maybe T.Text                     -- ^ Content hash of the dependency.
+         , depLabels :: Maybe (M.Map ACIdentifier T.Text) -- ^ List of labels for the dependency.
+         , depSize :: Maybe Integer                       -- ^ The size of the dependency in bytes.
+         }
+  deriving (Eq, Show)
+
+data Port =
+       Port
+         { portName :: T.Text          -- ^ Descriptive name for this port.
+         , portProto :: T.Text         -- ^ Protocol that will be used on this port. t
+         , portNum :: T.Text           -- ^ Port number that will be used.
+         , portCount :: Maybe Int      -- ^ A range of ports from portNum to portNum + count -1.
+         , portSocketActivated :: Bool -- ^ Whether app is socket activated in ports.
+         }
+  deriving (Eq, Show)
+
+data ACAnnotation =
+       ACAnnotation
+         { annoName :: T.Text -- ^ Name of the annotation.
+         , annoValue :: T.Text -- ^ Value of the annotation.
+         }
+  deriving (Eq, Show)
+
+
+--------------------------------------------------------------------------------
+-- Parsers
+
 -- | The kinds currently allowed.
 acKinds :: [T.Text]
 acKinds = ["ImageManifest", "PodManifest"]
+
 
 -- | Parse a kind.
 acKindParser :: Parser ACKind
 acKindParser = ACKind <$> choice (fmap string acKinds)
 
+
 -- | Parse an AC version, must follow the SemVer spec.
 acVersionParser :: Parser SemVer.Version
 acVersionParser = SemVer.parser
+
 
 -- Parse an AC Identifier type, see
 -- <https://github.com/appc/spec/blob/master/spec/types.md#ac-identifier-type>
