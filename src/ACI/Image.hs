@@ -38,7 +38,7 @@ data ImageManifest = ImageManifest
 instance FromJSON ImageManifest where
     parseJSON (Object x) =
         ImageManifest <$> x .: "acKind" <*> x .: "acVersion" <*> x .: "name"
-    parseJSON _ = fail "Expecting an ImageManifest"
+    parseJSON _ = fail "Expected an ImageManifest"
 
 
 instance ToJSON ImageManifest where
@@ -83,7 +83,7 @@ instance ToJSON ACVersion where
 -- | AC identifier type.
 newtype ACIdentifier =
     ACIdentifier T.Text
-    deriving (Eq, Generic,Show)
+    deriving (Eq, Generic, Show)
 
 instance FromJSON ACIdentifier
 instance ToJSON ACIdentifier
