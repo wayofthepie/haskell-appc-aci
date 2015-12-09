@@ -29,9 +29,9 @@ createImage = Tar.create
 --------------------------------------------------------------------------------
 -- | Definition for an image manifest.
 data ImageManifest = ImageManifest
-    { acKind :: ACKind                            -- ^ Must be an ACKind of value __ImageManifest__.
-    , acVersion :: SemVer.Version                 -- ^ The version of the schema specification.
-    , name :: ACIdentifier                        -- ^ Human readable name for this App Container image.
+    { acKind    :: ACKind       -- ^ Must be an ACKind of value __ImageManifest__.
+    , acVersion :: ACVersion    -- ^ The version of the schema specification.
+    , name      :: ACIdentifier -- ^ Human readable name for this App Container image.
     } deriving (Eq,Show)
 
 -- JSON representation of an ImageManifest.
@@ -49,19 +49,8 @@ instance ToJSON ImageManifest where
             , "name" .= name
             ]
 
-
--- Should wrap SemVer.Version in ACVersion newtype.
-instance FromJSON SemVer.Version where
-    parseJSON = withText "String" $ \txt ->
-        let eitherVer = SemVer.fromText txt
-        in case eitherVer of
-               Right v -> return v
-               Left _ -> fail "Expected a version"
-
-instance ToJSON SemVer.Version where
-         toJSON v = toJSON $ SemVer.toText v
 --------------------------------------------------------------------------------
--- AC Kind
+-- AC Kind.
 data ACKind = ACKind T.Text
       deriving (Eq,Generic, Show)
 
@@ -76,6 +65,20 @@ consAcKind kind =
         "PodManifest" -> Right $ ACKind kind
         _ -> Left "Unknown kind."
 
+--------------------------------------------------------------------------------
+-- | AC version.
+newtype ACVersion = ACVersion SemVer.Version deriving (Eq, Show)
+
+-- Should wrap SemVer.Version in ACVersion newtype.
+instance FromJSON ACVersion where
+    parseJSON = withText "String" $ \txt ->
+        let eitherVer = SemVer.fromText txt
+        in case eitherVer of
+               Right v -> return $ ACVersion v
+               Left _ -> fail "Expected a version"
+
+instance ToJSON ACVersion where
+         toJSON (ACVersion v) = toJSON $ SemVer.toText v
 --------------------------------------------------------------------------------
 -- | AC identifier type.
 newtype ACIdentifier =

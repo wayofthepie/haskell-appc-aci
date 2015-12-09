@@ -58,12 +58,12 @@ instance Arbitrary AllowedImageManifest where
         return $
             AllowedImageManifest jsonG (ImageManifest kind acVersionG acidG)
 
-genVersion :: Gen Version
+genVersion :: Gen ACVersion
 genVersion = do
            maj <- choose (0, 1000)
            mi <- choose (0, 1000)
            pat <- choose (0, 1000)
-           return $ version maj mi pat [] []
+           return $ ACVersion  (version maj mi pat [] [])
 
 
 prop_parse_image_man :: AllowedImageManifest -> Bool
