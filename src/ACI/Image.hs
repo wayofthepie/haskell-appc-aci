@@ -13,12 +13,12 @@ import Control.Applicative
 import Data.Aeson
 import Data.Attoparsec.Text
 import Data.Char
+import qualified Data.Map as Map
 import qualified Data.SemVer as SemVer
 import qualified Data.Text as T
 import GHC.Generics
 import Prelude hiding (FilePath, takeWhile)
 import System.FilePath
-
 -- | Create an image archive corresponding to the ACI specification.
 -- <https://github.com/appc/spec/blob/master/spec/aci.md#app-container-image ACI>
 createImage :: FilePath -> FilePath -> [FilePath] -> IO ()
@@ -29,25 +29,32 @@ createImage = Tar.create
 --------------------------------------------------------------------------------
 -- | Definition for an image manifest.
 data ImageManifest = ImageManifest
-    { acKind    :: ACKind       -- ^ Must be an ACKind of value __ImageManifest__.
-    , acVersion :: ACVersion    -- ^ The version of the schema specification.
-    , name      :: ACIdentifier -- ^ Human readable name for this App Container image.
+    { imKind    :: ACKind       -- ^ Must be an ACKind of value __ImageManifest__.
+    , imVersion :: ACVersion    -- ^ The version of the schema specification.
+    , imName    :: ACIdentifier -- ^ Human readable name for this App Container image.
+    , imLabels  :: [ACLabel] -- ^ Human readable name for this App Container image.
     } deriving (Eq,Show)
 
 -- JSON representation of an ImageManifest.
 instance FromJSON ImageManifest where
     parseJSON (Object x) =
-        ImageManifest <$> x .: "acKind" <*> x .: "acVersion" <*> x .: "name"
+        ImageManifest
+            <$> x .: "acKind"
+            <*> x .: "acVersion"
+            <*> x .: "name"
+            <*> x .: "labels"
     parseJSON _ = fail "Expected an ImageManifest"
 
 
 instance ToJSON ImageManifest where
     toJSON ImageManifest {..} =
         object
-            [ "acKind" .= acKind
-            , "acVersion" .= acVersion
-            , "name" .= name
+            [ "acKind" .= imKind
+            , "acVersion" .= imVersion
+            , "name" .= imName
+            , "labels" .= imLabels
             ]
+
 
 --------------------------------------------------------------------------------
 -- AC Kind.
@@ -65,11 +72,11 @@ consAcKind kind =
         "PodManifest" -> Right $ ACKind kind
         _ -> Left "Unknown kind."
 
+
 --------------------------------------------------------------------------------
 -- | AC version.
 newtype ACVersion = ACVersion SemVer.Version deriving (Eq, Show)
 
--- Should wrap SemVer.Version in ACVersion newtype.
 instance FromJSON ACVersion where
     parseJSON = withText "String" $ \txt ->
         let eitherVer = SemVer.fromText txt
@@ -79,16 +86,24 @@ instance FromJSON ACVersion where
 
 instance ToJSON ACVersion where
          toJSON (ACVersion v) = toJSON $ SemVer.toText v
+
+
 --------------------------------------------------------------------------------
 -- | AC identifier type.
-newtype ACIdentifier =
-    ACIdentifier T.Text
-    deriving (Eq, Generic, Show)
+-- TODO : Verify the rules for an AC Id.
+type ACIdentifier = T.Text
 
-instance FromJSON ACIdentifier
-instance ToJSON ACIdentifier
 --------------------------------------------------------------------------------
 -- Labels
+data ACLabel = ACLabel T.Text T.Text deriving (Eq, Generic, Show)
+
+instance FromJSON ACLabel where
+    parseJSON (Object x) = ACLabel <$> x .: "name" <*> x .: "value"
+    parseJSON _ = fail "Expected a label"
+
+instance ToJSON ACLabel where
+    toJSON (ACLabel n v) = object ["name" .= n, "value" .= v]
+
 
 {-
 --------------------------------------------------------------------------------
@@ -191,7 +206,7 @@ acVersionParser = SemVer.parser
 -- Parse an AC Identifier type, see
 -- <https://github.com/appc/spec/blob/master/spec/types.md#ac-identifier-type>
 acIdParser :: Parser ACIdentifier
-acIdParser = toAcid <$> initAllowed <*> tailAllowed
+acIdParser = T.cons <$> initAllowed <*> tailAllowed
   where
     initAllowed = choice [letter, digit]
     tailAllowed = do
@@ -202,4 +217,3 @@ acIdParser = toAcid <$> initAllowed <*> tailAllowed
                      ("Expected to end with a character or a digit, found " ++
                       [endc])
             else return t
-    toAcid ic s = ACIdentifier $ T.cons ic s
