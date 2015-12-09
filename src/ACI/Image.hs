@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -11,9 +13,9 @@ import Control.Applicative
 import Data.Aeson
 import Data.Attoparsec.Text
 import Data.Char
-import qualified Data.Map as M
 import qualified Data.SemVer as SemVer
 import qualified Data.Text as T
+import GHC.Generics
 import Prelude hiding (FilePath, takeWhile)
 import System.FilePath
 
@@ -30,49 +32,63 @@ data ImageManifest = ImageManifest
     { acKind :: ACKind                            -- ^ Must be an ACKind of value __ImageManifest__.
     , acVersion :: SemVer.Version                 -- ^ The version of the schema specification.
     , name :: ACIdentifier                        -- ^ Human readable name for this App Container image.
-    , labels :: Maybe (M.Map ACIdentifier T.Text) -- ^ Labels used during lookup in image discovery.
-    , app :: Maybe ACApp                          -- ^ Default parameters.
-    , dependencies :: Maybe [ACDependency]        -- ^ Dependent app images.
-    , pathWhiteList :: Maybe [FilePath]           -- ^ Whitelist of absolute paths.
-    , annotations :: Maybe [ACAnnotation]         -- ^ Any extra metadata you wish to add to the image.
     } deriving (Eq,Show)
 
+-- JSON representation of an ImageManifest.
 instance FromJSON ImageManifest where
     parseJSON (Object x) =
-        ImageManifest <$> (textToAcKind <$> x .: "acKind") <*>
-        ((SemVer.fromText <$> (x .: "acVersion")) >>=
-         \e ->
-              case e of
-                  Right v -> return v
-                  Left _ -> fail "Expected a version") <*>
-        x .: "name" <*>
-        x .:? "labels" <*>
-        x .:? "app" <*>
-        x .:? "dependencies" <*>
-        x .:? "pathWhiteList" <*>
-        x .:? "annotations"
-      where
-        failOnVerErr e =
-            case e of
-                Right v -> return v
-                Left _ -> "Version does follow semver spec"
+        ImageManifest <$> x .: "acKind" <*> x .: "acVersion" <*> x .: "name"
     parseJSON _ = fail "Expecting an ImageManifest"
 
-newtype ACKind =
-    ACKind T.Text
-    deriving (Eq,Show)
 
-textToAcKind :: T.Text -> ACKind
-textToAcKind kind =
+instance ToJSON ImageManifest where
+    toJSON ImageManifest {..} =
+        object
+            [ "acKind" .= acKind
+            , "acVersion" .= acVersion
+            , "name" .= name
+            ]
+
+
+-- Should wrap SemVer.Version in ACVersion newtype.
+instance FromJSON SemVer.Version where
+    parseJSON = withText "String" $ \txt ->
+        let eitherVer = SemVer.fromText txt
+        in case eitherVer of
+               Right v -> return v
+               Left _ -> fail "Expected a version"
+
+instance ToJSON SemVer.Version where
+         toJSON v = toJSON $ SemVer.toText v
+--------------------------------------------------------------------------------
+-- AC Kind
+data ACKind = ACKind T.Text
+      deriving (Eq,Generic, Show)
+
+instance FromJSON ACKind
+instance ToJSON ACKind
+
+-- | TODO : Capture this constraint in the type system.
+consAcKind :: T.Text -> Either T.Text ACKind
+consAcKind kind =
     case kind of
-        "ImageManifest" -> ACKind kind
-        "PodManifest" -> ACKind kind
+        "ImageManifest" -> Right $ ACKind kind
+        "PodManifest" -> Right $ ACKind kind
+        _ -> Left "Unknown kind."
 
+--------------------------------------------------------------------------------
 -- | AC identifier type.
 newtype ACIdentifier =
     ACIdentifier T.Text
-    deriving (Eq,Show)
+    deriving (Eq, Generic,Show)
 
+instance FromJSON ACIdentifier
+instance ToJSON ACIdentifier
+--------------------------------------------------------------------------------
+-- Labels
+
+{-
+--------------------------------------------------------------------------------
 -- | Defines the default parameters that can be used to execute this image as an application.
 data ACApp = ACApp
     { appExec :: Maybe [T.Text]                     -- ^ Executable with flags to launch.
@@ -154,7 +170,7 @@ data ACAnnotation = ACAnnotation
     { annoName :: T.Text -- ^ Name of the annotation.
     , annoValue :: T.Text -- ^ Value of the annotation.
     } deriving (Eq,Show)
-
+-}
 --------------------------------------------------------------------------------
 -- Parsers
 -- | The kinds currently allowed.
